@@ -1,41 +1,77 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import './App.css';
+import DatabaseConnectorForm from './components/DatabaseConnectorForm';
+import ChatInterface from './components/ChatInterface';
+import SQLQueryTester from './components/SQLQueryTester';
+import ConnectorList from './components/ConnectorList';
 
 function App() {
+  const [activeTab, setActiveTab] = useState<'chat' | 'sql' | 'connectors'>('connectors');
+  const [connectorRefreshKey, setConnectorRefreshKey] = useState(0);
+  const tenantId = 'demo'; // Default tenant for MVP
+
+  const handleConnectorCreated = useCallback(() => {
+    // Trigger refresh of connector list
+    setConnectorRefreshKey(prev => prev + 1);
+  }, []);
+
   return (
     <div className="App">
       <header className="App-header">
         <h1>BridgeMind</h1>
         <p>AI agent for unified data source querying</p>
-        <p className="status">🚧 Under Development</p>
       </header>
-      <main>
-        <div className="container">
-          <h2>Welcome to BridgeMind</h2>
-          <p>This is the initial UI scaffold. Implementation in progress.</p>
-          <div className="features">
-            <div className="feature">
-              <h3>📊 Multiple Databases</h3>
-              <p>Connect to multiple database sources</p>
+
+      <nav className="main-nav">
+        <button
+          className={activeTab === 'chat' ? 'active' : ''}
+          onClick={() => setActiveTab('chat')}
+        >
+          💬 Chat
+        </button>
+        <button
+          className={activeTab === 'sql' ? 'active' : ''}
+          onClick={() => setActiveTab('sql')}
+        >
+          🔍 SQL Tester
+        </button>
+        <button
+          className={activeTab === 'connectors' ? 'active' : ''}
+          onClick={() => setActiveTab('connectors')}
+        >
+          🔌 Connectors
+        </button>
+      </nav>
+
+      <main className="main-content">
+        {activeTab === 'chat' && (
+          <div className="tab-content">
+            <ChatInterface tenantId={tenantId} />
+          </div>
+        )}
+
+        {activeTab === 'sql' && (
+          <div className="tab-content">
+            <SQLQueryTester tenantId={tenantId} connectors={[]} />
+          </div>
+        )}
+
+        {activeTab === 'connectors' && (
+          <div className="tab-content connectors-tab">
+            <div className="connectors-section">
+              <DatabaseConnectorForm
+                tenantId={tenantId}
+                onSuccess={handleConnectorCreated}
+              />
             </div>
-            <div className="feature">
-              <h3>🔌 API Integration</h3>
-              <p>Add OpenAPI connectors as tools</p>
-            </div>
-            <div className="feature">
-              <h3>📄 Document Sources</h3>
-              <p>Index and search documents</p>
-            </div>
-            <div className="feature">
-              <h3>🌐 Web Data</h3>
-              <p>Access real-time web data</p>
+            <div className="connectors-section">
+              <ConnectorList key={connectorRefreshKey} tenantId={tenantId} />
             </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
 }
 
 export default App;
-

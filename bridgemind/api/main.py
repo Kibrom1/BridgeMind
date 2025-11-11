@@ -1,9 +1,16 @@
 """
 BridgeMind API - Main FastAPI application
 """
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent.parent / '.env'
+load_dotenv(env_path)
 
 from bridgemind.api.routes import chat, admin_connectors, tools_sql, tools_api
 

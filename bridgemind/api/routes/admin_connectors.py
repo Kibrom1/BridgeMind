@@ -1,9 +1,16 @@
 """
 Admin connector management endpoints
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+import uuid
+from datetime import datetime
+
+from bridgemind.api.database import get_db
+from bridgemind.api.models.database import DatabaseConnector
 
 router = APIRouter()
 
@@ -84,24 +91,154 @@ class WebConnectorResponse(BaseModel):
 
 # Database Connector Endpoints
 @router.post("/database", response_model=DatabaseConnectorResponse)
-async def create_database_connector(connector: DatabaseConnectorCreate):
+async def create_database_connector(
+    connector: DatabaseConnectorCreate,
+    db: Session = Depends(get_db)
+):
     """Add/Register a new database connector"""
-    # TODO: Implement database connector creation
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    try:
+        # Check if connector with same name already exists
+        existing = db.query(DatabaseConnector).filter(
+            DatabaseConnector.tenant_id == connector.tenantId,
+            DatabaseConnector.name == connector.name
+        ).first()
+        
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Connector with name '{connector.name}' already exists for this tenant"
+            )
+        
+        # Test database connection
+        try:
+            from sqlalchemy import create_engine, inspect
+            test_engine = create_engine(connector.connectionString, pool_pre_ping=True, poolclass=None)
+            with test_engine.connect() as conn:
+                # Test connection
+                conn.execute(text("SELECT 1"))
+                conn.commit()
+                
+                # Discover schema if connection successful
+                inspector = inspect(test_engine)
+                tables = inspector.get_table_names()
+                schema_info = {
+                    "tables": [
+                        {
+                            "name": table,
+                            "columns": [
+                                {
+                                    "name": col["name"],
+                                    "type": str(col["type"]),
+                                    "nullable": col["nullable"]
+                                }
+                                for col in inspector.get_columns(table)
+                            ]
+                        }
+                        for table in tables
+                    ]
+                }
+                test_engine.dispose()
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to connect to database: {str(e)}"
+            )
+        
+        # Create connector record
+        db_connector = DatabaseConnector(
+            tenant_id=connector.tenantId,
+            name=connector.name,
+            description=connector.description,
+            db_type=connector.dbType,
+            connection_string=connector.connectionString,  # TODO: Encrypt this
+            schema_info=schema_info,
+            status='active',
+            read_only=connector.readOnly,
+            max_rows_per_query=connector.maxRowsPerQuery,
+            last_schema_sync=datetime.utcnow()
+        )
+        
+        db.add(db_connector)
+        db.commit()
+        db.refresh(db_connector)
+        
+        return DatabaseConnectorResponse(
+            connectorId=str(db_connector.connector_id),
+            status=db_connector.status,
+            schemaDiscovered=True,
+            tablesCount=len(schema_info.get("tables", [])),
+            tables=[
+                {"name": table["name"], "columns": [col["name"] for col in table["columns"]]}
+                for table in schema_info.get("tables", [])[:10]  # Limit to first 10 for response
+            ]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create connector: {str(e)}"
+        )
 
 
 @router.get("/database")
-async def list_database_connectors(tenantId: str = Query(...)):
+async def list_database_connectors(
+    tenantId: str = Query(...),
+    db: Session = Depends(get_db)
+):
     """List all database connectors for a tenant"""
-    # TODO: Implement listing
-    return {"connectors": []}
+    connectors = db.query(DatabaseConnector).filter(
+        DatabaseConnector.tenant_id == tenantId
+    ).all()
+    
+    return {
+        "connectors": [
+            {
+                "connectorId": str(conn.connector_id),
+                "name": conn.name,
+                "dbType": conn.db_type,
+                "status": conn.status,
+                "tablesCount": len(conn.schema_info.get("tables", [])) if conn.schema_info else 0,
+                "lastSchemaSync": conn.last_schema_sync.isoformat() if conn.last_schema_sync else None,
+                "createdAt": conn.created_at.isoformat() if conn.created_at else None
+            }
+            for conn in connectors
+        ]
+    }
 
 
 @router.get("/database/{connectorId}")
-async def get_database_connector(connectorId: str):
+async def get_database_connector(
+    connectorId: str,
+    db: Session = Depends(get_db)
+):
     """Get details of a specific database connector"""
-    # TODO: Implement get
-    raise HTTPException(status_code=404, detail="Connector not found")
+    try:
+        connector_id = int(connectorId)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid connector ID")
+    
+    connector = db.query(DatabaseConnector).filter(
+        DatabaseConnector.connector_id == connector_id
+    ).first()
+    
+    if not connector:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    
+    return {
+        "connectorId": str(connector.connector_id),
+        "name": connector.name,
+        "description": connector.description,
+        "dbType": connector.db_type,
+        "status": connector.status,
+        "readOnly": connector.read_only,
+        "maxRowsPerQuery": connector.max_rows_per_query,
+        "schema": connector.schema_info or {"tables": []},
+        "createdAt": connector.created_at.isoformat() if connector.created_at else None,
+        "lastSchemaSync": connector.last_schema_sync.isoformat() if connector.last_schema_sync else None
+    }
 
 
 @router.put("/database/{connectorId}")
@@ -112,10 +249,33 @@ async def update_database_connector(connectorId: str, updates: Dict[str, Any]):
 
 
 @router.delete("/database/{connectorId}")
-async def delete_database_connector(connectorId: str):
-    """Delete connector (soft delete)"""
-    # TODO: Implement delete
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+async def delete_database_connector(
+    connectorId: str,
+    db: Session = Depends(get_db)
+):
+    """Delete connector (hard delete)"""
+    try:
+        connector_id = int(connectorId)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid connector ID")
+    
+    connector = db.query(DatabaseConnector).filter(
+        DatabaseConnector.connector_id == connector_id
+    ).first()
+    
+    if not connector:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    
+    try:
+        db.delete(connector)
+        db.commit()
+        return {"message": f"Connector '{connector.name}' deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete connector: {str(e)}"
+        )
 
 
 @router.post("/database/{connectorId}/sync-schema")
