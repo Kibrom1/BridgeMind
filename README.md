@@ -30,11 +30,11 @@ Build an MVP that can:
 
 | Layer          | Technology                               |
 | -------------- | ---------------------------------------- |
-| Backend        | Python (FastAPI) or Node.js (Fastify)    |
+| Backend        | Python (FastAPI)    |
 | LLM Agent      | OpenAI/Anthropic (tool-calling mode)     |
 | Database       | PostgreSQL 15 (pgvector enabled)         |
 | Object Storage | Local FS (dev) / S3-compatible interface |
-| Frontend       | React + Vite                             |
+| Frontend       | React                             |
 | Observability  | OpenTelemetry (logs + traces)            |
 | Auth           | Dev token (MVP), OIDC later              |
 
