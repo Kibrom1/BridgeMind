@@ -1,0 +1,57 @@
+.App {
+  text-align: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.App-header {
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.App-header h1 {
+  margin: 0;
+  font-size: 3rem;
+  font-weight: bold;
+}
+
+.status {
+  margin-top: 1rem;
+  font-size: 1.2rem;
+  opacity: 0.9;
+}
+
+main {
+  padding: 2rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+  margin-top: 3rem;
+}
+
+.feature {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2rem;
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+}
+
+.feature h3 {
+  margin-top: 0;
+  font-size: 1.5rem;
+}
+
+.feature p {
+  opacity: 0.9;
+  line-height: 1.6;
+}
+
